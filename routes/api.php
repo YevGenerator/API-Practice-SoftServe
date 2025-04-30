@@ -1,14 +1,29 @@
 <?php
 
+// Debug information
+error_log("Starting API routing...");
+error_log("Current directory: " . __DIR__);
+
 // Load required files
-require_once __DIR__ . '/../controllers/BaseController.php';
-require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../models/Movie.php';
-require_once __DIR__ . '/../models/Session.php';
-require_once __DIR__ . '/../models/Booking.php';
-require_once __DIR__ . '/../controllers/MovieController.php';
-require_once __DIR__ . '/../controllers/SessionController.php';
-require_once __DIR__ . '/../controllers/BookingController.php';
+$files = [
+    __DIR__ . '/../controllers/BaseController.php',
+    __DIR__ . '/../config/database.php',
+    __DIR__ . '/../models/Movie.php',
+    __DIR__ . '/../models/Session.php',
+    __DIR__ . '/../models/Booking.php',
+    __DIR__ . '/../controllers/MovieController.php',
+    __DIR__ . '/../controllers/SessionController.php',
+    __DIR__ . '/../controllers/BookingController.php'
+];
+
+foreach ($files as $file) {
+    if (file_exists($file)) {
+        error_log("Loading file: " . $file);
+        require_once $file;
+    } else {
+        error_log("File not found: " . $file);
+    }
+}
 
 // Set CORS headers
 header("Access-Control-Allow-Origin: *");
@@ -32,8 +47,9 @@ $segments = $path ? explode('/', $path) : [];
 error_log("Processed path: " . $path);
 error_log("Segments: " . print_r($segments, true));
 
-// Get request method
+// Get request method and query parameters
 $requestMethod = $_SERVER["REQUEST_METHOD"];
+$queryParams = $_GET;
 
 // Initialize database connection
 $database = new Database();
@@ -55,16 +71,27 @@ try {
     switch ($segments[0]) {
         case 'movies':
             $controller = new MovieController($db, $requestMethod);
+            if (isset($segments[1]) && is_numeric($segments[1])) {
+                $controller->setMovieId($segments[1]);
+            }
             $controller->processRequest();
             break;
             
         case 'sessions':
             $controller = new SessionController($db, $requestMethod);
+            if (isset($segments[1]) && is_numeric($segments[1])) {
+                $controller->setSessionId($segments[1]);
+            } elseif (isset($queryParams['movie_id'])) {
+                $controller->setMovieId($queryParams['movie_id']);
+            }
             $controller->processRequest();
             break;
             
         case 'bookings':
             $controller = new BookingController($db, $requestMethod);
+            if (isset($segments[1]) && is_numeric($segments[1])) {
+                $controller->setBookingId($segments[1]);
+            }
             $controller->processRequest();
             break;
             
@@ -74,7 +101,7 @@ try {
                 'status' => 'error',
                 'message' => 'Resource not found'
             ]);
-            break;
+            exit();
     }
 } catch (Exception $e) {
     error_log('Routing Error: ' . $e->getMessage());
@@ -83,4 +110,5 @@ try {
         'status' => 'error',
         'message' => 'Internal server error'
     ]);
+    exit();
 } 

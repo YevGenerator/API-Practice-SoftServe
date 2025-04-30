@@ -14,11 +14,20 @@ class Session {
         $this->conn = $db;
     }
 
+    public function read() {
+        $query = "SELECT * FROM " . $this->table_name;
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute();
+        return $stmt;
+    }
+
     public function readByMovie($movie_id) {
+        error_log("Executing query for movie_id: " . $movie_id);
         $query = "SELECT * FROM " . $this->table_name . " WHERE movie_id = ?";
         $stmt = $this->conn->prepare($query);
         $stmt->bindParam(1, $movie_id);
         $stmt->execute();
+        error_log("Query executed, row count: " . $stmt->rowCount());
         return $stmt;
     }
 

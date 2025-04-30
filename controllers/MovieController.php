@@ -2,18 +2,23 @@
 
 class MovieController extends BaseController {
     private $movie;
+    private $movieId;
 
     public function __construct($db, $requestMethod) {
         parent::__construct($db, $requestMethod);
         $this->movie = new Movie($db);
     }
 
+    public function setMovieId($movieId) {
+        $this->movieId = $movieId;
+    }
+
     public function processRequest() {
         try {
             switch ($this->requestMethod) {
                 case 'GET':
-                    if (isset($_GET['id'])) {
-                        $this->getMovie($_GET['id']);
+                    if (isset($this->movieId)) {
+                        $this->getMovie($this->movieId);
                     } else {
                         $this->getAllMovies();
                     }
@@ -28,6 +33,7 @@ class MovieController extends BaseController {
         }
         
         $this->sendResponse();
+        exit();
     }
 
     private function getAllMovies() {
@@ -45,7 +51,7 @@ class MovieController extends BaseController {
         }
 
         if (empty($movies)) {
-            $this->setResponse(200, [], 'No movies found');
+            $this->setResponse(404, null, 'No movies found');
         } else {
             $this->setResponse(200, $movies);
         }

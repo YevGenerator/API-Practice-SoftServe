@@ -38,6 +38,7 @@ try {
         'status' => 'error',
         'message' => 'Internal server error'
     ]);
+    exit();
 }
 
 // If we reach here, no route was matched
