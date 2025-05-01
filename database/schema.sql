@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     session_id INT NOT NULL,
     customer_name VARCHAR(255) NOT NULL,
     seat_number INT NOT NULL,
+    customer_email VARCHAR(255),
     FOREIGN KEY (session_id) REFERENCES sessions(id)
 );
 
