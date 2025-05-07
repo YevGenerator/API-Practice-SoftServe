@@ -15,9 +15,52 @@ class Session {
     }
 
     public function read() {
-        $query = "SELECT * FROM " . $this->table_name;
+        $query = "SELECT s.*, m.title as movie_title, m.genre 
+                 FROM " . $this->table_name . " s
+                 JOIN movies m ON s.movie_id = m.id";
+        
+        // Add filters if provided
+        $params = [];
+        $conditions = [];
+        
+        if (!empty($_GET['date'])) {
+            $date = $_GET['date'];
+            $conditions[] = "DATE(s.start_time) = ?";
+            $params[] = $date;
+        }
+        
+        if (!empty($_GET['time'])) {
+            $time = $_GET['time'];
+            $conditions[] = "TIME(s.start_time) >= ?";
+            $params[] = $time;
+        }
+        
+        if (!empty($_GET['genre'])) {
+            $genre = $_GET['genre'];
+            $conditions[] = "m.genre = ?";
+            $params[] = $genre;
+        }
+        
+        if (!empty($_GET['movieId'])) {
+            $movieId = $_GET['movieId'];
+            $conditions[] = "s.movie_id = ?";
+            $params[] = $movieId;
+        }
+        
+        if (!empty($conditions)) {
+            $query .= " WHERE " . implode(" AND ", $conditions);
+        }
+        
+        $query .= " ORDER BY s.start_time ASC";
+        
         $stmt = $this->conn->prepare($query);
-        $stmt->execute();
+        
+        if (!empty($params)) {
+            $stmt->execute($params);
+        } else {
+            $stmt->execute();
+        }
+        
         return $stmt;
     }
 
@@ -43,6 +86,71 @@ class Session {
             $this->start_time = $row['start_time'];
             $this->hall = $row['hall'];
             $this->price = $row['price'];
+            return true;
+        }
+        return false;
+    }
+
+    public function create() {
+        $query = "INSERT INTO " . $this->table_name . " 
+                 (movie_id, start_time, hall, price) 
+                 VALUES (?, ?, ?, ?)";
+        
+        $stmt = $this->conn->prepare($query);
+        
+        // Sanitize inputs
+        $this->movie_id = (int)$this->movie_id;
+        $this->hall = htmlspecialchars(strip_tags($this->hall));
+        $this->price = (float)$this->price;
+        
+        // Bind parameters
+        $stmt->bindParam(1, $this->movie_id);
+        $stmt->bindParam(2, $this->start_time);
+        $stmt->bindParam(3, $this->hall);
+        $stmt->bindParam(4, $this->price);
+        
+        if ($stmt->execute()) {
+            $this->id = $this->conn->lastInsertId();
+            return true;
+        }
+        return false;
+    }
+
+    public function update() {
+        $query = "UPDATE " . $this->table_name . " 
+                 SET movie_id = ?, start_time = ?, hall = ?, price = ? 
+                 WHERE id = ?";
+        
+        $stmt = $this->conn->prepare($query);
+        
+        // Sanitize inputs
+        $this->movie_id = (int)$this->movie_id;
+        $this->hall = htmlspecialchars(strip_tags($this->hall));
+        $this->price = (float)$this->price;
+        $this->id = (int)$this->id;
+        
+        // Bind parameters
+        $stmt->bindParam(1, $this->movie_id);
+        $stmt->bindParam(2, $this->start_time);
+        $stmt->bindParam(3, $this->hall);
+        $stmt->bindParam(4, $this->price);
+        $stmt->bindParam(5, $this->id);
+        
+        if ($stmt->execute()) {
+            return true;
+        }
+        return false;
+    }
+
+    public function delete() {
+        $query = "DELETE FROM " . $this->table_name . " WHERE id = ?";
+        $stmt = $this->conn->prepare($query);
+        
+        // Sanitize input
+        $this->id = (int)$this->id;
+        $stmt->bindParam(1, $this->id);
+        
+        if ($stmt->execute()) {
             return true;
         }
         return false;

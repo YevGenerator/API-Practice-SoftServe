@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Redirecting...</title>
+    <script type="text/javascript" src="/aes.js"></script>
+    <script>
+        function setCookie(name, value, days) {
+            const date = new Date();
+            date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+            const expires = "expires=" + date.toUTCString();
+            document.cookie = name + "=" + value + ";" + expires + ";path=/";
+        }
+
+        // Set the test cookie
+        setCookie("__test", "test_value", 1);
+        
+        // Redirect to your API endpoint
+        window.location.href = "/api/movies/2?i=1";
+    </script>
+</head>
+<body>
+    <noscript>
+        This site requires Javascript to work, please enable Javascript in your browser or use a browser with Javascript support
+    </noscript>
+</body>
+</html> 
