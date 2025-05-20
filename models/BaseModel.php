@@ -1,46 +1,80 @@
 <?php
+abstract class BaseModel
+{
+    protected $conn;
+    public $table_name = "table";
 
-abstract class BaseModel {
-    protected $db;
-    protected $table;
-
-    public function __construct() {
-        $this->db = Database::getInstance()->getConnection();
+    public function __construct($db)
+    {
+        $this->conn = $db;
     }
 
-    public function find($id) {
-        $stmt = $this->db->prepare("SELECT * FROM {$this->table} WHERE id = ?");
-        $stmt->execute([$id]);
-        return $stmt->fetch();
+    public function columns(): array
+    {
+        return [];
     }
 
-    public function findAll() {
-        $stmt = $this->db->prepare("SELECT * FROM {$this->table}");
+    public function select()
+    {
+        $stmt = $this->conn->prepare("SELECT * FROM {$this->table_name}");
         $stmt->execute();
-        return $stmt->fetchAll();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode($rows);
     }
 
-    public function create($data) {
-        $columns = implode(', ', array_keys($data));
-        $values = implode(', ', array_fill(0, count($data), '?'));
-        
-        $stmt = $this->db->prepare("INSERT INTO {$this->table} ($columns) VALUES ($values)");
-        $stmt->execute(array_values($data));
-        
-        return $this->db->lastInsertId();
+    public function select_ids()
+    {
+        $stmt = $this->conn->prepare("SELECT id FROM {$this->table_name}");
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode(array_column($rows, "id"));
     }
 
-    public function update($id, $data) {
-        $set = implode(' = ?, ', array_keys($data)) . ' = ?';
-        $values = array_values($data);
-        $values[] = $id;
-        
-        $stmt = $this->db->prepare("UPDATE {$this->table} SET $set WHERE id = ?");
-        return $stmt->execute($values);
+    public function remove($id)
+    {
+        $stmt = $this->conn->prepare("delete from {$this->table_name} where id=:id");
+        $stmt->execute([
+            ':id' => $id,
+        ]);
+        echo json_encode([
+            "success" => true
+        ]);
     }
 
-    public function delete($id) {
-        $stmt = $this->db->prepare("DELETE FROM {$this->table} WHERE id = ?");
-        return $stmt->execute([$id]);
+    public function insert($values)
+    {
+        $columns = $this->columns();
+        $column_strings = implode('`,`', $columns);
+        $placeholders = ":" . implode(", :", $columns);
+        $sql = "insert into $this->table_name (`$column_strings`) VALUES ($placeholders)";
+        error_log("sql: ". $sql);
+        $stmt = $this->conn->prepare($sql);
+        for ($i = 0; $i < count($values); $i++) {
+            $stmt->bindValue(":$columns[$i]", $values[$i]);
+        }
+        $stmt->execute();
+        echo json_encode([
+            "success" => true
+        ]);
+        return $this->conn->lastInsertId();
     }
-} 
+
+    public function update($id, $values)
+    {
+        $columns = $this->columns();
+
+        $set_clause = implode(', ', array_map(function ($col) {
+            return "$col = :$col";
+        }, $columns));
+
+        $sql = "UPDATE $this->table_name SET $set_clause WHERE id = :id";
+        $stmt = $this->conn->prepare($sql);
+
+        for ($i = 0; $i < count($columns); $i++) {
+            $stmt->bindValue(":{$columns[$i]}", $values[$i]);
+        }
+        $stmt->bindValue(":id", $id);
+        $stmt->execute();
+    }
+
+}

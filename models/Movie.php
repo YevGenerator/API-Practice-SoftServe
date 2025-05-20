@@ -1,175 +1,195 @@
 <?php
-
-class Movie {
-    private $conn;
-    private $table_name = "movies";
-
-    public $id;
-    public $title;
-    public $description;
-    public $duration;
-    public $poster_url;
-    public $genre;
-    public $year;
-    public $rating;
-    public $actors;
-
-    public function __construct($db) {
-        $this->conn = $db;
+require_once "BaseModel.php";
+class Movie extends BaseModel
+{
+    public $bind_actors = "movies_actors";
+    public $bind_genres = "movie_genres";
+    public function __construct($db)
+    {
+        parent::__construct($db);
+        $this->table_name = 'movies';
+    }
+    public function columns(): array
+    {
+        return ["title", "description", "director_id", "duration", "rating", "year"];
     }
 
-    public function read() {
-        $query = "SELECT * FROM " . $this->table_name;
-        
-        // Add filters if provided
-        $params = [];
-        $conditions = [];
-        
-        if (!empty($_GET['genre'])) {
-            $conditions[] = "genre = ?";
-            $params[] = $_GET['genre'];
-        }
-        
-        if (!empty($_GET['year'])) {
-            $conditions[] = "year = ?";
-            $params[] = $_GET['year'];
-        }
-        
-        if (!empty($_GET['rating'])) {
-            $conditions[] = "rating >= ?";
-            $params[] = $_GET['rating'];
-        }
-        
-        if (!empty($conditions)) {
-            $query .= " WHERE " . implode(" AND ", $conditions);
-        }
-        
-        $query .= " ORDER BY year DESC, rating DESC";
-        
-        $stmt = $this->conn->prepare($query);
-        
-        if (!empty($params)) {
-            $stmt->execute($params);
-        } else {
-            $stmt->execute();
-        }
-        
-        return $stmt;
-    }
-
-    public function readOne() {
-        $query = "SELECT * FROM " . $this->table_name . " WHERE id = ? LIMIT 0,1";
-        $stmt = $this->conn->prepare($query);
-        $stmt->bindParam(1, $this->id);
+    public function select_ids()
+    {
+        $stmt = $this->conn->prepare("SELECT id, title FROM {$this->table_name}");
         $stmt->execute();
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-
-        if ($row) {
-            $this->title = $row['title'];
-            $this->description = $row['description'];
-            $this->duration = $row['duration'];
-            $this->poster_url = $row['poster_url'];
-            $this->genre = $row['genre'] ?? '';
-            $this->year = $row['year'] ?? null;
-            $this->rating = $row['rating'] ?? null;
-            $this->actors = $row['actors'] ?? '';
-            return true;
-        }
-        return false;
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        echo json_encode($rows);
     }
 
-    public function create() {
-        $query = "INSERT INTO " . $this->table_name . " 
-                 (title, description, duration, poster_url, genre, year, rating, actors) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-        
-        $stmt = $this->conn->prepare($query);
-        
-        // Sanitize inputs
-        $this->title = htmlspecialchars(strip_tags($this->title));
-        $this->description = htmlspecialchars(strip_tags($this->description));
-        $this->duration = (int)$this->duration;
-        $this->poster_url = htmlspecialchars(strip_tags($this->poster_url));
-        $this->genre = htmlspecialchars(strip_tags($this->genre));
-        $this->year = (int)$this->year;
-        $this->rating = (float)$this->rating;
-        $this->actors = htmlspecialchars(strip_tags($this->actors));
-        
-        // Bind parameters
-        $stmt->bindParam(1, $this->title);
-        $stmt->bindParam(2, $this->description);
-        $stmt->bindParam(3, $this->duration);
-        $stmt->bindParam(4, $this->poster_url);
-        $stmt->bindParam(5, $this->genre);
-        $stmt->bindParam(6, $this->year);
-        $stmt->bindParam(7, $this->rating);
-        $stmt->bindParam(8, $this->actors);
-        
-        if ($stmt->execute()) {
-            $this->id = $this->conn->lastInsertId();
-            return true;
+    public function select()
+    {
+        $sql = "
+SELECT 
+    m.id AS id,
+    m.title,
+    m.description,
+    m.duration,
+    m.rating,
+    m.year,
+    JSON_OBJECT('id', d.id, 'name', d.name) AS director,
+    
+    -- Жанри через підзапит
+    COALESCE(
+        (
+            SELECT JSON_ARRAYAGG(JSON_OBJECT('id', g.id, 'name', g.name))
+            FROM movie_genres mg
+            JOIN genres g ON mg.genre_id = g.id
+            WHERE mg.movie_id = m.id
+        ),
+        JSON_ARRAY()
+    ) AS genres,
+
+    -- Актори через підзапит
+    COALESCE(
+        (
+            SELECT JSON_ARRAYAGG(JSON_OBJECT(
+                'id', a.id,
+                'name', a.name,
+                'birthday', a.birthday,
+                'char_name', ma.char_name
+            ))
+            FROM movies_actors ma
+            JOIN actors a ON ma.actor_id = a.id
+            WHERE ma.movie_id = m.id
+        ),
+        JSON_ARRAY()
+    ) AS actors
+
+FROM movies m
+LEFT JOIN actors d ON m.director_id = d.id
+ORDER BY m.id
+
+";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute();
+        $movies = [];
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $movies[] = [
+                'id' => (int)$row['id'],
+                'title' => $row['title'],
+                'description' => $row['description'],
+                'director' => json_decode($row['director']),
+                'duration' => $row['duration'],
+                'rating' => $row['rating'],
+                'year'=>$row["year"],
+                'genres' => json_decode($row['genres']) ?? [],
+                'actors' => json_decode($row['actors']) ?? []
+            ];
         }
-        return false;
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode($movies, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
     }
 
-    public function update() {
-        $query = "UPDATE " . $this->table_name . " 
-                 SET title = ?, description = ?, duration = ?, poster_url = ?, 
-                 genre = ?, year = ?, rating = ?, actors = ? 
-                 WHERE id = ?";
-        
-        $stmt = $this->conn->prepare($query);
-        
-        // Sanitize inputs
-        $this->title = htmlspecialchars(strip_tags($this->title));
-        $this->description = htmlspecialchars(strip_tags($this->description));
-        $this->duration = (int)$this->duration;
-        $this->poster_url = htmlspecialchars(strip_tags($this->poster_url));
-        $this->genre = htmlspecialchars(strip_tags($this->genre));
-        $this->year = (int)$this->year;
-        $this->rating = (float)$this->rating;
-        $this->actors = htmlspecialchars(strip_tags($this->actors));
-        $this->id = (int)$this->id;
-        
-        // Bind parameters
-        $stmt->bindParam(1, $this->title);
-        $stmt->bindParam(2, $this->description);
-        $stmt->bindParam(3, $this->duration);
-        $stmt->bindParam(4, $this->poster_url);
-        $stmt->bindParam(5, $this->genre);
-        $stmt->bindParam(6, $this->year);
-        $stmt->bindParam(7, $this->rating);
-        $stmt->bindParam(8, $this->actors);
-        $stmt->bindParam(9, $this->id);
-        
-        if ($stmt->execute()) {
-            return true;
+    public function insert_genres($movie_id, $genres_id_list)
+    {
+        $column_strings = "movie_id, genre_id";
+        $replace_strings = ":movie_id, :genre_id";
+        $sql = "insert into $this->bind_genres ($column_strings) values ($replace_strings)";
+        $stmt = $this->conn->prepare($sql);
+        foreach ($genres_id_list as $genre_id) {
+            $stmt->execute([
+                ':movie_id' => $movie_id,
+                ':genre_id' => $genre_id,
+            ]);
         }
-        return false;
+    }
+    public function insert_actors($movie_id, $actors_list)
+    {
+        $column_strings = "movie_id, actor_id, char_name";
+        $replace_strings = ":movie_id, :actor_id, :char_name";
+        $sql = "INSERT INTO $this->bind_actors ($column_strings) VALUES ($replace_strings)";
+        $stmt = $this->conn->prepare($sql);
+
+        foreach ($actors_list as $actor) {
+            $stmt->execute([
+                ':movie_id' => $movie_id,
+                ':actor_id' => $actor['id'],
+                ':char_name' => $actor['char_name'],
+            ]);
+        }
+    }
+    public function remove_old_actors($movie_id)
+    {
+        $sql = "delete from $this->bind_actors where movie_id=:movie_id";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute([
+            ':movie_id' => $movie_id
+        ]);
+    }
+    public function remove_old_genres($movie_id)
+    {
+        $sql = "delete from $this->bind_genres where movie_id=:movie_id";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute([
+            ':movie_id' => $movie_id
+        ]);
+    }
+    public function insert($values)
+    {
+        $id = parent::insert($values);
+        $path = __DIR__."/../images/movies/".$id;
+        if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+            $imageTmpPath = $_FILES['image']['tmp_name'];
+            $imageName = basename($_FILES['image']['name']);
+            $extension = pathinfo($imageName, PATHINFO_EXTENSION);
+            $path = $path . '.' . strtolower($extension);
+
+            if (move_uploaded_file($imageTmpPath, $path)) {
+                http_response_code(200);
+                echo json_encode(['status' => 'success']);
+            } else {
+                http_response_code(500);
+                echo json_encode(['error' => 'Помилка збереження файлу']);
+            }
+        } else {
+            http_response_code(400);
+            echo json_encode(['error' => 'Файл не надіслано']);
+        }
+        return $id;
     }
 
-    public function delete() {
-        $query = "DELETE FROM " . $this->table_name . " WHERE id = ?";
-        $stmt = $this->conn->prepare($query);
-        
-        // Sanitize input
-        $this->id = (int)$this->id;
-        $stmt->bindParam(1, $this->id);
-        
-        if ($stmt->execute()) {
-            return true;
-        }
-        return false;
-    }
+    public function remove($id)
+    {
+        parent::remove($id);
+        $path = __DIR__."/../images/actors/";
+        $files = glob($path . "$id*", GLOB_BRACE);
 
-    public function getSessions($movieId) {
-        $stmt = $this->conn->prepare("
-            SELECT s.* 
-            FROM sessions s 
-            WHERE s.movie_id = ? 
-            ORDER BY s.start_time ASC
-        ");
-        $stmt->execute([$movieId]);
-        return $stmt->fetchAll();
+        foreach ($files as $file) {
+            if (is_file($file)) {
+                unlink($file);
+            }
+        }
+    }
+    public function update($id, $values){
+        parent::update($id, $values);
+        $this->remove_old_actors($id);
+        $this->remove_old_genres($id);
+        $this->insert_actors($id,  json_decode($_POST["actors"], true));
+        $this->insert_genres($id,  $_POST["genres"]);
+        $path = __DIR__."/../images/movies/".$id;
+        if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+            $imageTmpPath = $_FILES['image']['tmp_name'];
+            $imageName = basename($_FILES['image']['name']);
+            $extension = pathinfo($imageName, PATHINFO_EXTENSION);
+            $path = $path . '.' . strtolower($extension);
+
+            if (move_uploaded_file($imageTmpPath, $path)) {
+                http_response_code(200);
+                echo json_encode(['status' => 'success']);
+            } else {
+                http_response_code(500);
+                echo json_encode(['error' => 'Помилка збереження файлу']);
+            }
+            exit;
+        } else {
+            echo json_encode(['error' => 'Файл не надіслано']);
+        }
     }
 } 
