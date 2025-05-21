@@ -11,12 +11,26 @@ class User extends BaseModel
         $this->table_name = TableNames::USERS;
     }
 
+    public function columns(): array
+    {
+        return ["name", "email", "password"];
+    }
     public function exists($id)
     {
         $stmt = $this->conn->prepare("SELECT COUNT(*) FROM $this->table_name WHERE id = :id");
         $stmt->bindParam(':id', $id, PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchColumn() > 0;
+    }
+
+    public function select_one($id)
+    {
+        $sql = "SELECT name, email, password FROM users WHERE id = :id LIMIT 1";
+        $stmt = $this->conn->prepare($sql);
+        $stmt->execute(['id' => $id]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $user ?: null;
+
     }
     public function login($email, $password, $role_id)
     {

@@ -71,6 +71,36 @@ try {
     }
 
     switch ($segments[0]) {
+        case ApiRoutes::DB_USERS:
+            if ($requestMethod === HttpRequestMethod::PUT)
+            {
+                $jwt = new JwtService();
+                $jwt_data = $jwt->getPayload();
+                $user = new User($database->getConnection());
+                $exists = $user->exists($jwt_data["user_id"]);
+                if($exists)
+                {
+                    $json = file_get_contents("php://input");
+                    $data = json_decode($json, true);
+                    $user->update($jwt_data["user_id"],
+                        [$data["name"], $data["email"], $data["password"]]);
+                    echo json_encode(["success"=>true]);
+                }
+                exit;
+            }
+            if ($requestMethod === HttpRequestMethod::GET)
+            {
+                $jwt = new JwtService();
+                $jwt_data = $jwt->getPayload();
+                $user = new User($database->getConnection());
+                $exists = $user->exists($jwt_data["user_id"]);
+                if($exists)
+                {
+                    echo json_encode($user->select_one($jwt_data["user_id"]));
+                }
+                exit;
+            }
+            exit;
         case ApiRoutes::LOGIN:
             if ($requestMethod === HttpRequestMethod::POST)
             {
